@@ -136,7 +136,7 @@ def register_city(name, country):
   url = f'http://{HOST}:{PORT}/cities'
   body = {"name": name, "country": country}
   response = requests.put(url, json=body)
-  assert response.status_code == 204
+  assert response.status_code == 201
 
 def get_cities():
   url = f'http://{HOST}:{PORT}/cities'
@@ -175,7 +175,7 @@ def register_airport(code, name, city, numberOfTerminals, address):
     "address": address
   }
   response = requests.put(url, json=body)
-  assert response.status_code == 204
+  assert response.status_code == 201
 
 def get_airports_in_a_city(city):
   url = f'http://{HOST}:{PORT}/cities/{city}/airports'
@@ -209,7 +209,7 @@ def register_flight(number, from_airport, to_airport, price, flight_time_in_minu
     "operator": operator
   }
   response = requests.put(url, json=body)
-  assert response.status_code == 204
+  assert response.status_code == 201
 
 def get_flight_raw(number):
   url = f'http://{HOST}:{PORT}/flights/{number}'

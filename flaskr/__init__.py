@@ -25,13 +25,11 @@ def create_app():
         result = runQuery(
             """
             MATCH (ct:City {name: $city})
-            WITH count(ct) as exists
-            CALL(exists){
-                WITH exists WHERE exists = 0
-                MERGE (c:Country {name: $country})
-                MERGE (ct:City {name: $city})
-                MERGE (ct)-[:LOCATED_IN]->(c)
-            }
+            WITH count(ct) AS exists
+            WHERE exists = 0
+            MERGE (c:Country {name: $country})
+            MERGE (ct:City {name: $city})
+            MERGE (ct)-[:LOCATED_IN]->(c)
             RETURN exists
             """,
             {"country": country, "city": city}
@@ -62,14 +60,7 @@ def create_app():
                 """
             )
             
-        cities = []
-        for row in result:
-            city = {
-                "name": row["name"],
-                "country": row["country"]
-            }
-            cities.append(city)
-        return jsonify(cities), 200
+        return jsonify(result), 200
 
     @app.route('/cities/<name>', methods=['GET'])
     def getCityDetails(name):
@@ -84,11 +75,7 @@ def create_app():
         if not result:
             return jsonify("City not found."), 404
                 
-        city_details = {
-            "name": result[0]["name"],
-            "country": result[0]["country"]
-        }
-        return jsonify(city_details), 200
+        return jsonify(result[0]), 200
             
     @app.route('/cities/<name>/airports', methods=['PUT'])
     def registerAirport(name):
@@ -144,18 +131,7 @@ def create_app():
             {"city": name}
         )
 
-        airports = []
-        for row in result:
-            airport = {
-                "code": row["code"],
-                "city": row["city"],
-                "name": row["name"],
-                "numberOfTerminals": row["numberOfTerminals"],
-                "address": row["address"]
-            }
-            airports.append(airport)
-
-        return jsonify(airports), 200
+        return jsonify(result), 200
 
     @app.route('/airports/<code>', methods=['GET'])
     def getAirportByCode(code):
@@ -174,17 +150,93 @@ def create_app():
         if not result:
             return jsonify("Airport not found."), 404
 
-        airport = {
-            "code": result[0]["code"],
-            "city": result[0]["city"],
-            "name": result[0]["name"],
-            "numberOfTerminals": result[0]["numberOfTerminals"],
-            "address": result[0]["address"]
-        }
+        return jsonify(result[0]), 200
 
-        return jsonify(airport), 200
+    @app.route('/flights', methods=['PUT'])
+    def registerFlight():
+        data = request.get_json()
+        number, fromAirport, toAirport, price, flightTimeInMinutes, operator = data.get('number'), data.get('fromAirport'), data.get('toAirport'), data.get('price'), data.get('flightTimeInMinutes'), data.get('operator')
 
+        if not all([number, fromAirport, toAirport, price, flightTimeInMinutes, operator]) or any(str(param).strip()=="" for param in [number, fromAirport, toAirport, operator]) or price<0 or flightTimeInMinutes<0:
+            return jsonify("Flight could not be created due to missing or incorrect data."), 400
+
+        result = runQuery(
+            """
+            MATCH (from:Airport {code: $fromAirport}), (to:Airport {code: $toAirport})
+            MERGE (from)-[flight:FLIGHT {
+                number: $number,
+                price: $price,
+                flightTimeInMinutes: $flightTimeInMinutes,
+                operator: $operator
+            }]->(to)
+            RETURN flight
+            """,
+            {"number": number, "fromAirport": fromAirport, "toAirport": toAirport, "price": price, "flightTimeInMinutes": flightTimeInMinutes, "operator": operator}
+        )
+
+        if not result:
+            return jsonify("Flight could not be created due to duplicate flight number."), 400
+
+        return jsonify("Flight created."), 201
     
+    @app.route('/flights/<code>', methods=['GET'])
+    def findFlight(code):
+        result = runQuery(
+            """
+            MATCH (from:Airport)-[flight:FLIGHT {number: $code}]->(to:Airport)
+            MATCH (from)-[:LOCATED_IN]->(fromCity:City)
+            MATCH (to)-[:LOCATED_IN]->(toCity:City)
+            RETURN flight.number AS number,
+                from.code AS fromAirport,
+                fromCity.name AS fromCity,
+                to.code AS toAirport,
+                toCity.name AS toCity,
+                flight.price AS price,
+                flight.flightTimeInMinutes AS flightTimeInMinutes,
+                flight.operator AS operator
+            """,
+            {"code": code}
+        )
+
+        if not result:
+            return jsonify("Flight not found."), 404
+
+        return jsonify(result[0]), 200
+    
+    @app.route('/search/flights/<fromCity>/<toCity>', methods=['GET'])
+    def findFlightFromTo(fromCity, toCity):
+        accessibleCities = runQuery(
+            """
+            MATCH (ct:City)
+            WHERE ct.name = $fromCity OR ct.name = $toCity
+            RETURN count(ct) AS accessibleCities
+            """,
+            {"fromCity": fromCity, "toCity": toCity}
+        )
+
+        if len(accessibleCities)==0 or accessibleCities[0]["accessibleCities"]!=2:
+            return jsonify("One or both cities do not exist."), 404
+
+        result = runQuery(
+            """
+            MATCH (from:Airport)-[:LOCATED_IN]->(:City {name: $fromCity}),
+                (to:Airport)-[:LOCATED_IN]->(:City {name: $toCity})
+            MATCH path = (from)-[:FLIGHT*]->(to)
+            WHERE length(path) <= 3 
+            WITH from, to, path,
+                reduce(totalPrice = 0, r IN relationships(path) | totalPrice + r.price) AS totalPrice,
+                reduce(totalTime = 0, r IN relationships(path) | totalTime + r.flightTimeInMinutes) AS totalTime,
+                [r IN relationships(path) | r.number] AS flightNumbers
+            RETURN from.code AS fromAirport,
+                to.code AS toAirport,
+                flightNumbers AS flights,
+                totalPrice AS price,
+                totalTime AS flightTimeInMinutes
+            """,
+            {"fromCity": fromCity, "toCity": toCity}
+        )
+
+        return jsonify(result), 200
 
     @app.route('/cleanup', methods=['POST'])
     def cleanup():
