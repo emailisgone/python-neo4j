@@ -221,12 +221,12 @@ def create_app():
             """
             MATCH (from:Airport)-[:LOCATED_IN]->(:City {name: $fromCity}),
                 (to:Airport)-[:LOCATED_IN]->(:City {name: $toCity})
-            MATCH path = (from)-[:FLIGHT*]->(to)
-            WHERE length(path) <= 3 
-            WITH from, to, path,
-                reduce(totalPrice = 0, r IN relationships(path) | totalPrice + r.price) AS totalPrice,
-                reduce(totalTime = 0, r IN relationships(path) | totalTime + r.flightTimeInMinutes) AS totalTime,
-                [r IN relationships(path) | r.number] AS flightNumbers
+            MATCH flights = (from)-[:FLIGHT*]->(to)
+            WHERE length(flights) <= 3
+            WITH from, to, flights,
+                reduce(totalPrice = 0, flight IN relationships(flights) | totalPrice + flight.price) AS totalPrice,
+                reduce(totalTime = 0, flight IN relationships(flights) | totalTime + flight.flightTimeInMinutes) AS totalTime,
+                [flight IN relationships(flights) | flight.number] AS flightNumbers
             RETURN from.code AS fromAirport,
                 to.code AS toAirport,
                 flightNumbers AS flights,
